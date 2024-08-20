@@ -1,0 +1,107 @@
+version: "3.9"
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    environment:
+      PUID: 1000 
+      PGID: 1000 
+    ports:
+      - 3000:3000
+    volumes:
+      - /home/liam/docker/config/homepage/:/app/config # Make sure your local config directory exists
+      - /var/run/docker.sock:/var/run/docker.sock:ro # optional, for docker integrations
+    restart: unless-stopped
+
+  open-resume:
+    image: itsnoted/open-resume:latest
+    container_name: open-resume
+    ports:
+      - 3120:3000
+    restart: unless-stopped
+
+  yabin:
+    image: yureien/yabin:latest
+    container_name: yabin
+    ports:
+      - 3293:3000
+    environment:
+      - DATABASE_URL=postgresql://liam:${DB_PASSWORD}@db:5432/yabin?schema=public
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: db
+    environment:
+      POSTGRES_USER: liam
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: yabin
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+    volumes:
+      - db_data:/var/lib/postgresql/data:Z
+    restart: always
+
+  postgres:
+    image: postgres:16-alpine
+    env_file: .env
+    container_name: postgres
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    restart: always
+
+  linkwarden:
+    image: ghcr.io/linkwarden/linkwarden:latest
+    container_name: linkwarden
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+    ports:
+      - 3002:3000
+    volumes:
+      - ./data:/data/data
+    depends_on:
+      - postgres
+    restart: always
+
+  vaultwarden:
+    container_name: vaultwarden
+    image: vaultwarden/server:latest
+    volumes:
+      - /home/liam/docker/data/vaultwarden/data:/data/
+      - /home/liam/docker/data/vaultwarden/logs:/var/log/vaultwarden
+    ports:
+      - 4576:80
+    environment:
+      - DOMAIN=https://vault.social-network.work
+      - LOGIN_RATELIMIT_MAX_BURST=10
+      - LOGIN_RATELIMIT_SECONDS=60
+      - ADMIN_RATELIMIT_MAX_BURST=10
+      - ADMIN_RATELIMIT_SECONDS=60
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - SENDS_ALLOWED=true
+      - INVITIATIONS_ALLOWED=true
+      - EMERGENCY_ACCESS_ALLOWED=true
+      - WEB_VAULT_ENABLED=true
+      - SIGNUPS_ALLOWED=true
+      - SIGNUPS_DOMAINS_WHITELIST=vault.social-network.work, social-network.work
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_FROM=${SMTP_FROM_EMAIL}
+      - SMTP_FROM_NAME=homelab
+      - SMTP_SECURITY=off
+      - SMTP_PORT=465
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_AUTH_MECHANISM="Mechanism"
+      - SHOW_PASSWORD_HINT=false
+      - SMTP_DEBUG=true
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  db_data: {}
